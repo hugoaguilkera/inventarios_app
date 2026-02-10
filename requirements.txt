@@ -1,0 +1,10 @@
+@"
+streamlit
+pandas
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+openai
+pyarrow
+"@ | Set-Content -Encoding UTF8 requirements.txt
