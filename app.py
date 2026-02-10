@@ -1,4 +1,3 @@
-import os
 import streamlit as st
 import pandas as pd
 import gspread
@@ -12,7 +11,7 @@ st.set_page_config(page_title="Inventarios", layout="wide")
 st.title("📦 Inventarios")
 
 # -----------------------------
-# GOOGLE SHEETS CONFIG
+# GOOGLE SHEETS CONFIG (SECRETS)
 # -----------------------------
 SHEET_ID = "10vYjAS-dwG-dO0PsYMzUfoi_EIJzJXlbqrKcpYipYsY"
 
@@ -29,8 +28,27 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-credenciales = Credentials.from_service_account_file(
-    "service_account.json",
+# --- Leer secrets GCP ---
+gcp = st.secrets["gcp_service_account"]
+
+# --- Limpiar saltos de línea ---
+private_key = gcp["private_key"].replace("\\n", "\n")
+
+service_account_info = {
+    "type": gcp["type"],
+    "project_id": gcp["project_id"],
+    "private_key_id": gcp["private_key_id"],
+    "private_key": private_key,
+    "client_email": gcp["client_email"],
+    "client_id": gcp["client_id"],
+    "auth_uri": gcp["auth_uri"],
+    "token_uri": gcp["token_uri"],
+    "auth_provider_x509_cert_url": gcp["auth_provider_x509_cert_url"],
+    "client_x509_cert_url": gcp["client_x509_cert_url"],
+}
+
+credenciales = Credentials.from_service_account_info(
+    service_account_info,
     scopes=SCOPES
 )
 
@@ -38,9 +56,9 @@ client_gs = gspread.authorize(credenciales)
 spreadsheet = client_gs.open_by_key(SHEET_ID)
 
 # -----------------------------
-# OPENAI CONFIG (ENV VAR)
+# OPENAI CONFIG (SECRETS)
 # -----------------------------
-client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client_ai = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -----------------------------
 # SIDEBAR
@@ -57,14 +75,14 @@ worksheet = spreadsheet.worksheet(HOJAS[vista])
 data = worksheet.get_all_records()
 df = pd.DataFrame(data)
 
-# 🔒 BLINDAJE PARA PYARROW
+# Blindaje PyArrow
 df = df.astype(str)
 
 # -----------------------------
 # MOSTRAR DATA
 # -----------------------------
 st.subheader(f"📄 {vista}")
-st.dataframe(df, width="stretch")
+st.dataframe(df, use_container_width=True)
 
 # -----------------------------
 # IA SOBRE INVENTARIOS
@@ -97,5 +115,6 @@ Responde de forma clara, numérica y profesional.
 
         st.success("Respuesta IA:")
         st.write(respuesta.output_text)
+
 
 
