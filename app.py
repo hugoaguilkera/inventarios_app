@@ -1,4 +1,3 @@
-# CAMBIO FORZADO PARA GIT
 
 import streamlit as st
 import pandas as pd
@@ -21,6 +20,7 @@ SHEET_ID = "10vYjAS-dwG-dO0PsYMzUfoi_EIJzJXlbqrKcpYipYsY"
 HOJAS = {
     "Entradas y Salidas": "Entradas y Salidas",
     "Inventario": "Inventario",
+    "Kardex": "KARDEX",          # 👈 NO es hoja real
     "MODELO": "MODELO",
     "POR CLIENTE": "POR CLIENTE",
     "PackingList": "PackingList",
@@ -95,9 +95,7 @@ def filtrar_dataframe(df, cliente, anio):
     df_f = df.copy()
 
     if cliente:
-        df_f = df_f[
-            df_f["Cliente"].str.upper().str.strip() == cliente
-        ]
+        df_f = df_f[df_f["Cliente"].str.upper().str.strip() == cliente]
 
     if anio and "Fecha" in df_f.columns:
         df_f = df_f[df_f["Fecha"].str.contains(anio)]
@@ -133,13 +131,73 @@ Reglas:
 
 
 # -----------------------------
+# FUNCIÓN KARDEX
+# -----------------------------
+def generar_kardex(df_movimientos, cliente, modelo=None):
+    df = df_movimientos.copy()
+
+    df["Cliente"] = df["Cliente"].str.upper().str.strip()
+    df["Tipo de Movimiento"] = df["Tipo de Movimiento"].str.upper().str.strip()
+    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
+    df["Piezas"] = pd.to_numeric(df["Piezas"], errors="coerce").fillna(0)
+
+    df = df[df["Cliente"] == cliente]
+
+    if modelo:
+        df = df[df["Modelo"] == modelo]
+
+    df = df.sort_values("Fecha")
+
+    df["Movimiento"] = df.apply(
+        lambda r: r["Piezas"]
+        if r["Tipo de Movimiento"] == "ENTRADA"
+        else -r["Piezas"],
+        axis=1
+    )
+
+    df["Saldo"] = df["Movimiento"].cumsum()
+
+    return df[
+        ["Fecha", "Tipo de Movimiento", "Modelo", "Piezas", "Movimiento", "Saldo"]
+    ]
+
+
+# -----------------------------
 # EJECUCIÓN
 # -----------------------------
 spreadsheet = conectar_google_sheets()
 client_ai = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# 👉 Vista SOLO para mostrar datos
 vista = st.sidebar.selectbox("Selecciona vista", list(HOJAS.keys()))
+
+# -----------------------------
+# VISTA KARDEX
+# -----------------------------
+if vista == "Kardex":
+    st.subheader("📊 Kardex")
+
+    df_mov = cargar_dataframe(spreadsheet, "Entradas y Salidas")
+
+    cliente_sel = st.selectbox(
+        "Selecciona cliente",
+        sorted(df_mov["Cliente"].unique())
+    )
+
+    modelo_sel = st.selectbox(
+        "Selecciona modelo (opcional)",
+        ["Todos"] + sorted(df_mov["Modelo"].unique())
+    )
+
+    modelo_filtro = None if modelo_sel == "Todos" else modelo_sel
+
+    df_kardex = generar_kardex(df_mov, cliente_sel, modelo_filtro)
+
+    st.dataframe(df_kardex, use_container_width=True)
+    st.stop()
+
+# -----------------------------
+# VISTAS NORMALES
+# -----------------------------
 df_vista = cargar_dataframe(spreadsheet, HOJAS[vista])
 
 st.subheader(f"📄 {vista}")
@@ -154,8 +212,6 @@ st.subheader("🤖 Pregunta a la IA")
 pregunta = st.text_input("Ejemplo: Inventario SJM Enero 2026")
 
 if st.button("Preguntar a la IA") and pregunta:
-
-    # ⚠️ FUENTE REAL: Inventario
     df_inventario = cargar_dataframe(spreadsheet, "Inventario")
 
     cliente, anio = detectar_cliente_y_anio(pregunta, df_inventario)
@@ -174,8 +230,4 @@ if st.button("Preguntar a la IA") and pregunta:
         respuesta = preguntar_a_ia(df_filtrado, pregunta, client_ai)
         st.success("Respuesta IA:")
         st.write(respuesta)
-
-
-
-
 
