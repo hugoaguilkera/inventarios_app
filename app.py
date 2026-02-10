@@ -19,7 +19,7 @@ SHEET_ID = "10vYjAS-dwG-dO0PsYMzUfoi_EIJzJXlbqrKcpYipYsY"
 HOJAS = {
     "Entradas y Salidas": "Entradas y Salidas",
     "Inventario": "Inventario",
-    "Kardex": "KARDEX",          # 👈 NO es hoja real
+    "Kardex": "KARDEX",  # no es hoja real
     "MODELO": "MODELO",
     "POR CLIENTE": "POR CLIENTE",
     "PackingList": "PackingList",
@@ -50,9 +50,7 @@ def conectar_google_sheets():
         "client_x509_cert_url": gcp["client_x509_cert_url"],
     }
 
-    creds = Credentials.from_service_account_info(
-        service_account_info, scopes=SCOPES
-    )
+    creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID)
 
@@ -68,24 +66,15 @@ def detectar_cliente_y_anio(pregunta, df):
     cliente = None
     anio = None
 
-    clientes_df = (
-        df["Cliente"]
-        .str.upper()
-        .str.strip()
-        .unique()
-        .tolist()
-        if "Cliente" in df.columns
-        else []
-    )
+    if "Cliente" in df.columns:
+        for c in df["Cliente"].str.upper().str.strip().unique():
+            if c in p:
+                cliente = c
+                break
 
-    for c in clientes_df:
-        if c in p:
-            cliente = c
-            break
-
-    match_anio = re.search(r"\b20\d{2}\b", p)
-    if match_anio:
-        anio = match_anio.group(0)
+    match = re.search(r"\b20\d{2}\b", p)
+    if match:
+        anio = match.group(0)
 
     return cliente, anio
 
@@ -98,10 +87,6 @@ def filtrar_dataframe(df, cliente, anio):
 
     if anio and "Fecha" in df_f.columns:
         df_f = df_f[df_f["Fecha"].str.contains(anio)]
-
-    if "Cliente" in df_f.columns and df_f["Cliente"].nunique() > 1:
-        st.error(f"Datos mezclados: {df_f['Cliente'].unique()}")
-        st.stop()
 
     return df_f
 
@@ -117,9 +102,9 @@ Pregunta:
 {pregunta}
 
 Reglas:
-- No inventes clientes.
-- No asumas relaciones.
-- Si no hay información suficiente, dilo.
+- No inventes clientes
+- No asumas relaciones
+- Si no hay información suficiente, dilo
 """
 
     r = client_ai.responses.create(
@@ -148,17 +133,46 @@ def generar_kardex(df_movimientos, cliente, modelo=None):
     df = df.sort_values("Fecha")
 
     df["Movimiento"] = df.apply(
-        lambda r: r["Piezas"]
-        if r["Tipo de Movimiento"] == "ENTRADA"
-        else -r["Piezas"],
+        lambda r: r["Piezas"] if r["Tipo de Movimiento"] == "ENTRADA" else -r["Piezas"],
         axis=1
     )
 
     df["Saldo"] = df["Movimiento"].cumsum()
 
-    return df[
-        ["Fecha", "Tipo de Movimiento", "Modelo", "Piezas", "Movimiento", "Saldo"]
-    ]
+    return df[["Fecha", "Tipo de Movimiento", "Modelo", "Piezas", "Movimiento", "Saldo"]]
+
+
+# -----------------------------
+# FUNCIÓN REPORTE DIARIO OPERATIVO
+# -----------------------------
+def generar_reporte_diario_operativo(df_movimientos, fecha):
+    df = df_movimientos.copy()
+
+    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
+    df["Piezas"] = pd.to_numeric(df["Piezas"], errors="coerce").fillna(0)
+    df["Tipo de Movimiento"] = df["Tipo de Movimiento"].str.upper().str.strip()
+    df["Cliente"] = df["Cliente"].str.upper().str.strip()
+
+    fecha = pd.to_datetime(fecha)
+    df = df[df["Fecha"] == fecha]
+
+    df["Entrada"] = df.apply(
+        lambda r: r["Piezas"] if r["Tipo de Movimiento"] == "ENTRADA" else 0,
+        axis=1
+    )
+    df["Salida"] = df.apply(
+        lambda r: r["Piezas"] if r["Tipo de Movimiento"] == "SALIDA" else 0,
+        axis=1
+    )
+
+    resumen = (
+        df.groupby("Cliente", as_index=False)
+        .agg({"Entrada": "sum", "Salida": "sum"})
+    )
+
+    resumen["Neto"] = resumen["Entrada"] - resumen["Salida"]
+
+    return df, resumen
 
 
 # -----------------------------
@@ -177,22 +191,18 @@ if vista == "Kardex":
 
     df_mov = cargar_dataframe(spreadsheet, "Entradas y Salidas")
 
-    cliente_sel = st.selectbox(
-        "Selecciona cliente",
-        sorted(df_mov["Cliente"].unique())
-    )
-
+    cliente_sel = st.selectbox("Selecciona cliente", sorted(df_mov["Cliente"].unique()))
     modelo_sel = st.selectbox(
         "Selecciona modelo (opcional)",
         ["Todos"] + sorted(df_mov["Modelo"].unique())
     )
 
     modelo_filtro = None if modelo_sel == "Todos" else modelo_sel
-
     df_kardex = generar_kardex(df_mov, cliente_sel, modelo_filtro)
 
     st.dataframe(df_kardex, use_container_width=True)
     st.stop()
+
 
 # -----------------------------
 # VISTAS NORMALES
