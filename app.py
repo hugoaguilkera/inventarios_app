@@ -5,21 +5,24 @@ from google.oauth2.service_account import Credentials
 from openai import OpenAI
 import re
 
-# -----------------------------
-# CONFIG STREAMLIT
-# -----------------------------
-st.set_page_config(page_title="Inventarios", layout="wide")
+# =====================================================
+# CONFIGURACIÓN STREAMLIT (UI)
+# =====================================================
+st.set_page_config(
+    page_title="Inventarios",
+    layout="wide"
+)
 st.title("📦 Inventarios")
 
-# -----------------------------
-# CONSTANTES
-# -----------------------------
+# =====================================================
+# CONSTANTES GLOBALES
+# =====================================================
 SHEET_ID = "10vYjAS-dwG-dO0PsYMzUfoi_EIJzJXlbqrKcpYipYsY"
 
 HOJAS = {
     "Entradas y Salidas": "Entradas y Salidas",
     "Inventario": "Inventario",
-    "Kardex": "KARDEX",  # no es hoja real
+    "Kardex": None,              # 👈 NO es hoja real
     "MODELO": "MODELO",
     "POR CLIENTE": "POR CLIENTE",
     "PackingList": "PackingList",
@@ -30,9 +33,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# -----------------------------
-# FUNCIONES
-# -----------------------------
+# =====================================================
+# FUNCIONES DE CONEXIÓN Y CARGA
+# =====================================================
 def conectar_google_sheets():
     gcp = st.secrets["gcp_service_account"]
     private_key = gcp["private_key"].replace("\\n", "\n")
@@ -50,7 +53,10 @@ def conectar_google_sheets():
         "client_x509_cert_url": gcp["client_x509_cert_url"],
     }
 
-    creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
+    creds = Credentials.from_service_account_info(
+        service_account_info,
+        scopes=SCOPES
+    )
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID)
 
@@ -60,7 +66,9 @@ def cargar_dataframe(spreadsheet, hoja):
     df = pd.DataFrame(ws.get_all_records())
     return df.astype(str)
 
-
+# =====================================================
+# FUNCIONES DE SOPORTE IA
+# =====================================================
 def detectar_cliente_y_anio(pregunta, df):
     p = pregunta.upper()
     cliente = None
@@ -113,10 +121,9 @@ Reglas:
     )
     return r.output_text
 
-
-# -----------------------------
+# =====================================================
 # FUNCIÓN KARDEX
-# -----------------------------
+# =====================================================
 def generar_kardex(df_movimientos, cliente, modelo=None):
     df = df_movimientos.copy()
 
@@ -133,15 +140,17 @@ def generar_kardex(df_movimientos, cliente, modelo=None):
     df = df.sort_values("Fecha")
 
     df["Movimiento"] = df.apply(
-        lambda r: r["Piezas"] if r["Tipo de Movimiento"] == "ENTRADA" else -r["Piezas"],
+        lambda r: r["Piezas"]
+        if r["Tipo de Movimiento"] == "ENTRADA"
+        else -r["Piezas"],
         axis=1
     )
 
     df["Saldo"] = df["Movimiento"].cumsum()
 
-    return df[["Fecha", "Tipo de Movimiento", "Modelo", "Piezas", "Movimiento", "Saldo"]]
-
-
+    return df[
+        ["Fecha", "Tipo de Movimiento", "Modelo", "Piezas", "Movimiento", "Saldo"]
+    ]
 # -----------------------------
 # FUNCIÓN REPORTE DIARIO OPERATIVO
 # -----------------------------
