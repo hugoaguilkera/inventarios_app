@@ -64,7 +64,7 @@ df = df.astype(str)
 # MOSTRAR DATA
 # -----------------------------
 st.subheader(f"📄 {vista}")
-st.dataframe(df, use_container_width=True)
+st.dataframe(df, width="stretch")
 
 # -----------------------------
 # IA SOBRE INVENTARIOS
