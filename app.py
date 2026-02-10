@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -231,3 +230,57 @@ if st.button("Preguntar a la IA") and pregunta:
         st.success("Respuesta IA:")
         st.write(respuesta)
 
+# -----------------------------
+# FUNCIÓN KARDEX / CUADRE
+# -----------------------------
+def generar_reporte_cuadre_inventario_kardex(df_mov, df_inv):
+    """
+    Genera reporte de cuadre entre Kardex (Entradas y Salidas)
+    y la hoja Inventario.
+    """
+
+    # --- KARDEX ---
+    kardex = df_mov.copy()
+
+    kardex["Cliente"] = kardex["Cliente"].str.upper().str.strip()
+    kardex["Modelo"] = kardex["Modelo"].str.upper().str.strip()
+    kardex["Lote"] = kardex["Lote"].str.upper().str.strip()
+    kardex["Tipo"] = kardex["Tipo"].str.upper().str.strip()
+
+    kardex["Movimiento"] = kardex.apply(
+        lambda r: r["Piezas"] if r["Tipo"] == "ENTRADA" else -r["Piezas"],
+        axis=1
+    )
+
+    kardex = (
+        kardex
+        .groupby(["Cliente", "Modelo", "Lote"], as_index=False)["Movimiento"]
+        .sum()
+        .rename(columns={"Movimiento": "Saldo_Kardex"})
+    )
+
+    # --- INVENTARIO ---
+    inv = df_inv.copy()
+
+    inv["Cliente"] = inv["Cliente"].str.upper().str.strip()
+    inv["Modelo"] = inv["Modelo"].str.upper().str.strip()
+    inv["Lote"] = inv["Lote"].str.upper().str.strip()
+
+    inv = inv.rename(columns={"Piezas en stock": "Inventario"})
+    inv = inv[["Cliente", "Modelo", "Lote", "Inventario"]]
+
+    # --- CRUCE ---
+    cuadre = kardex.merge(
+        inv,
+        on=["Cliente", "Modelo", "Lote"],
+        how="left"
+    )
+
+    cuadre["Inventario"] = cuadre["Inventario"].fillna(0).astype(int)
+    cuadre["Diferencia"] = cuadre["Inventario"] - cuadre["Saldo_Kardex"]
+
+    cuadre["Estatus"] = cuadre["Diferencia"].apply(
+        lambda x: "OK" if x == 0 else "REVISAR"
+    )
+
+    return cuadre
